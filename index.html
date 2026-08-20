@@ -14,6 +14,39 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
+        /* Animación para ocultar el panel */
+        aside {
+            transition: margin-left 0.3s ease-in-out;
+        }
+
+        aside.oculto {
+            margin-left: -320px; /* Esconde el panel hacia la izquierda */
+        }
+
+        /* Botones Flotantes sobre el mapa */
+        .btn-flotante {
+            position: absolute;
+            z-index: 20;
+            background-color: #222b36;
+            color: #5da9f6;
+            border: 2px solid #5da9f6;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            transition: all 0.2s;
+        }
+
+        .btn-flotante:hover {
+            background-color: #5da9f6;
+            color: #1a222b;
+        }
+
+        /* Posiciones de los botones */
+        #btn-toggle { top: 20px; left: 20px; font-size: 18px; padding: 8px 14px; }
+        #btn-centrar { bottom: 40px; right: 20px; }
 /* Reseteo general */
         html {
             height: 100%;
@@ -143,7 +176,9 @@
 
     <!-- Área Principal del Mapa -->
     <main>
+        <button id="btn-toggle" class="btn-flotante">☰</button>
         <div id="mapa"></div>
+        <button id="btn-centrar" class="btn-flotante">🎯 Centrar Ubicación</button>
     </main>
 
     <script>
@@ -180,6 +215,7 @@
 
         // Array para almacenar el historial de coordenadas (Trayecto)
         let coordenadasTrayecto = [];
+        let ultimaUbicacion = [-68.1500, -16.5000]; // Memoria para el botón de centrar
 
         // Preparamos la capa de la trayectoria una vez que el mapa cargue
         mapa.on('load', () => {
@@ -235,6 +271,7 @@
 
                 // Actualizar Trayectoria
                 const nuevaCoordenada = [lng, lat];
+                ultimaUbicacion = nuevaCoordenada;
                 coordenadasTrayecto.push(nuevaCoordenada);
 
                 // Refrescar el mapa con el nuevo array si la capa ya existe
@@ -260,6 +297,25 @@
                     zoom: 15.5
                 });
             }
+        });
+        // 4. FUNCIONALIDAD DE LOS BOTONES
+        // Botón para abrir/cerrar el panel lateral
+        document.getElementById('btn-toggle').addEventListener('click', () => {
+            document.querySelector('aside').classList.toggle('oculto');
+            
+            // Le damos tiempo a la animación para terminar y reajustamos el mapa
+            setTimeout(() => {
+                mapa.resize();
+            }, 300);
+        });
+
+        // Botón para centrar la cámara
+        document.getElementById('btn-centrar').addEventListener('click', () => {
+            mapa.flyTo({
+                center: ultimaUbicacion,
+                zoom: 16,
+                speed: 1.5
+            });
         });
     </script>
 </body>
