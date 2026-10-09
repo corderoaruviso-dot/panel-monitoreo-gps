@@ -216,9 +216,20 @@
         // Array para almacenar el historial de coordenadas (Trayecto)
         let coordenadasTrayecto = [];
         let ultimaUbicacion = [-68.1500, -16.5000]; // Memoria para el botón de centrar
-
+// --- CONFIGURACIÓN DE LA GEOCERCA ---
+        const geocercaCentro = [-68.1641599, -16.5056737]; // Reemplaza con la longitud y latitud del centro de tu zona (ej. UPEA o tu casa)
+        const geocercaRadioKm = 0.2; // Radio de la geocerca en kilómetros (0.2 km = 200 metros)
+        
+        // Crear el polígono circular de la geocerca usando Turf.js
+        const opcionesTurf = { steps: 64, units: 'kilometers' };
+        const circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
         // Preparamos la capa de la trayectoria una vez que el mapa cargue
         mapa.on('load', () => {
+            // --- DIBUJAR LA GEOCERCA ---
+            mapa.addSource('fuente-geocerca', {
+                'type': 'geojson',
+                'data': circuloGeocerca
+            });
             mapa.addSource('ruta-tracker', {
                 'type': 'geojson',
                 'data': {
@@ -251,6 +262,31 @@
         const referenciaUbicacion = baseDeDatos.ref('rastreo/estudiante');
 
         referenciaUbicacion.on('value', (snapshot) => {
+            // Actualizar Trayectoria
+                const nuevaCoordenada = [lng, lat];
+                ultimaUbicacion = nuevaCoordenada;
+                coordenadasTrayecto.push(nuevaCoordenada);
+
+                // --- LÓGICA DE LA GEOCERCA ---
+                const puntoActual = turf.point(nuevaCoordenada);
+                // booleanPointInPolygon verifica si el punto está dentro del círculo
+                const estaDentro = turf.booleanPointInPolygon(puntoActual, circuloGeocerca);
+
+                if (!estaDentro) {
+                    // ¡El dispositivo salió de la geocerca!
+                    estadoUI.innerText = "¡ALERTA! Fuera de la zona segura";
+                    estadoUI.style.backgroundColor = "#8b0000"; // Rojo oscuro
+                    estadoUI.style.color = "#ffffff";
+                    estadoUI.style.border = "1px solid #ff0000";
+                    // Opcional: mostrar un alert nativo del navegador
+                    // alert("El dispositivo ha salido de la zona establecida.");
+                } else {
+                    // Está dentro de la geocerca
+                    estadoUI.innerText = "Satélite Conectado - Dentro de zona";
+                    estadoUI.style.backgroundColor = "#213b2c";
+                    estadoUI.style.color = "#4ade80";
+                    estadoUI.style.border = "1px solid #4ade80";
+                }
             const datos = snapshot.val();
 
             if (datos) {
@@ -318,5 +354,7 @@
             });
         });
     </script>
+    <!-- Librería Turf.js para cálculos geoespaciales -->
+    <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
 </body>
 </html>
