@@ -153,4 +153,101 @@
             // --- FUNCIÓN PARA MOVER LA GEOCERCA ---
             mapa.on('click', (e) => {
                 const nuevaLatitud = e.lngLat.lat;
-                const nuevaLongitud = e
+                const nuevaLongitud = e.lngLat.lng;
+
+                // Guardar en Firebase
+                baseDeDatos.ref('rastreo/geocerca').set({
+                    latitud: nuevaLatitud,
+                    longitud: nuevaLongitud,
+                    radio: 0.2
+                });
+            });
+
+            mapa.getCanvas().style.cursor = 'crosshair';
+        });
+
+        // 5. ESCUCHA DE LA BASE DE DATOS
+
+        // A. Escuchar cambios de la Geocerca
+        const referenciaGeocerca = baseDeDatos.ref('rastreo/geocerca');
+        referenciaGeocerca.on('value', (snapshot) => {
+            const datosGeo = snapshot.val();
+            if (datosGeo) {
+                geocercaCentro = [datosGeo.longitud, datosGeo.latitud];
+                geocercaRadioKm = datosGeo.radio;
+                
+                circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
+
+                if (mapa.getSource('fuente-geocerca')) {
+                    mapa.getSource('fuente-geocerca').setData(circuloGeocerca);
+                }
+            }
+        });
+
+        // B. Escuchar la Ubicación del Estudiante
+        const referenciaUbicacion = baseDeDatos.ref('rastreo/estudiante');
+        referenciaUbicacion.on('value', (snapshot) => {
+            const datos = snapshot.val();
+            if (datos) {
+                const lat = datos.latitud;
+                const lng = datos.longitud;
+                const hora = datos.hora;
+                const fecha = datos.fecha;
+
+                const estadoUI = document.getElementById('estado');
+
+                // Interfaz UI
+                estadoUI.classList.add('conectado');
+                document.getElementById('fecha-txt').innerText = fecha;
+                document.getElementById('hora-txt').innerText = hora;
+                document.getElementById('lat-txt').innerText = lat;
+                document.getElementById('lng-txt').innerText = lng;
+
+                const nuevaCoordenada = [lng, lat];
+                ultimaUbicacion = nuevaCoordenada;
+                coordenadasTrayecto.push(nuevaCoordenada);
+
+                // Lógica Geocerca
+                const puntoActual = turf.point(nuevaCoordenada);
+                const estaDentro = turf.booleanPointInPolygon(puntoActual, circuloGeocerca);
+
+                if (!estaDentro) {
+                    estadoUI.innerText = "¡ALERTA! Fuera de la zona segura";
+                    estadoUI.style.backgroundColor = "#8b0000";
+                    estadoUI.style.color = "#ffffff";
+                    estadoUI.style.border = "1px solid #ff0000";
+                } else {
+                    estadoUI.innerText = "Satélite Conectado - Dentro de zona";
+                    estadoUI.style.backgroundColor = "#213b2c";
+                    estadoUI.style.color = "#4ade80";
+                    estadoUI.style.border = "1px solid #4ade80";
+                }
+
+                // Actualizar Mapa
+                if (mapa.getSource('ruta-tracker')) {
+                    mapa.getSource('ruta-tracker').setData({
+                        'type': 'Feature',
+                        'properties': {},
+                        'geometry': { 'type': 'LineString', 'coordinates': coordenadasTrayecto }
+                    });
+                }
+
+                marcador.setLngLat(nuevaCoordenada);
+                marcador.getPopup().setHTML(`<b>Dispositivo Activo</b><br>Capturado: ${hora}`);
+
+                mapa.flyTo({ center: nuevaCoordenada, speed: 1.2, zoom: 15.5 });
+            }
+        });
+
+        // 6. BOTONES LATERALES
+        document.getElementById('btn-toggle').addEventListener('click', () => {
+            document.querySelector('aside').classList.toggle('oculto');
+            setTimeout(() => { mapa.resize(); }, 300);
+        });
+
+        document.getElementById('btn-centrar').addEventListener('click', () => {
+            mapa.flyTo({ center: ultimaUbicacion, zoom: 16, speed: 1.5 });
+        });
+    </script>
+</body>
+</html>
