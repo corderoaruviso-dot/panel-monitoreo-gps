@@ -153,22 +153,47 @@
             }
         });
 
-        // 5. NUEVO: ASIGNAR NUEVA GEOCERCA AL HACER CLIC DERECHO
-        mapa.on('contextmenu', (e) => {
+// 5. ASIGNAR NUEVA GEOCERCA (COMPATIBLE CON PC Y CELULAR)
+        
+        // Función central para guardar en Firebase (evita repetir código)
+        function guardarNuevaGeocerca(coordenadas) {
             const confirmacion = confirm("¿Establecer este punto como la escuela / zona segura?");
             if (confirmacion) {
-                // Guardar en Firebase
                 refGeocerca.set({
-                    lat: e.lngLat.lat,
-                    lng: e.lngLat.lng
+                    lat: coordenadas.lat,
+                    lng: coordenadas.lng
                 }).then(() => {
                     alert("Zona segura actualizada con éxito.");
                 }).catch((error) => {
                     console.error("Error al actualizar zona segura:", error);
                 });
             }
+        }
+
+        // Evento para Computadoras (Clic derecho)
+        mapa.on('contextmenu', (e) => {
+            guardarNuevaGeocerca(e.lngLat);
         });
 
+        // Eventos para Celulares (Mantener presionado)
+        let temporizadorToque;
+
+        mapa.on('touchstart', (e) => {
+            // Al tocar la pantalla, iniciamos un conteo de 1 segundo (1000 milisegundos)
+            temporizadorToque = setTimeout(() => {
+                guardarNuevaGeocerca(e.lngLat);
+            }, 1000); 
+        });
+
+        mapa.on('touchend', () => {
+            // Si el usuario levanta el dedo antes de 1 segundo (fue solo un toque normal), cancelamos
+            clearTimeout(temporizadorToque);
+        });
+
+        mapa.on('touchmove', () => {
+            // Si el usuario mueve el dedo (está arrastrando el mapa), cancelamos
+            clearTimeout(temporizadorToque);
+        });
         // 6. ESCUCHA DE LA UBICACIÓN DEL ESTUDIANTE Y ALARMA
         refEstudiante.on('value', (snapshot) => {
             const datos = snapshot.val();
