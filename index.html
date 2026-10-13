@@ -5,18 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Monitoreo - Mapbox</title>
 
-    <!-- 1. LIBRERÍAS (Orden estricto) -->
-    <!-- Mapbox -->
+    <!-- Librerías de Mapbox GL JS -->
     <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
     <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
-    <!-- Firebase -->
+
+    <!-- Librerías de Firebase (Versión 8 Compat) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <!-- Turf.js -->
+
+    <!-- AQUÍ VA Turf.js (Antes de tu script principal) -->
     <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
 
     <style>
-        /* (Tus estilos se mantienen intactos) */
         aside { transition: margin-left 0.3s ease-in-out; }
         aside.oculto { margin-left: -320px; }
         .btn-flotante { position: absolute; z-index: 20; background-color: #222b36; color: #5da9f6; border: 2px solid #5da9f6; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); transition: all 0.2s; }
@@ -39,7 +39,6 @@
     </style>
 </head>
 <body>
-
     <aside>
         <header>
             <h1>Monitoreo GPS</h1>
@@ -66,7 +65,7 @@
     </main>
 
     <script>
-        // 2. CONFIGURACIÓN DE FIREBASE
+        // 1. CONFIGURACIÓN DE FIREBASE
         const firebaseConfig = {
             apiKey: "AIzaSyAfc4xMCc3jEmGsgFWv_to2mkTAX_WIH3c",
             authDomain: "rastreo-familiar-4e8b4.firebaseapp.com",
@@ -79,46 +78,41 @@
         firebase.initializeApp(firebaseConfig);
         const baseDeDatos = firebase.database();
 
-        // 3. CONFIGURACIÓN DE MAPBOX
+        // 2. CONFIGURACIÓN DE MAPBOX
         mapboxgl.accessToken = 'pk.eyJ1IjoiZ29yZG9nYXRvNDAwIiwiYSI6ImNtc3huMm9vbzA0b2szNXBwcXp1c3JleGcifQ.I1nn6YTXVD8_0EDEUeO5_Q'; 
         
         const mapa = new mapboxgl.Map({
             container: 'mapa',
             style: 'mapbox://styles/mapbox/streets-v12',
-            center: [-68.1500, -16.5000],
-            zoom: 14
+            center: [-68.1641599, -16.5056737],
+            zoom: 15
         });
 
         mapa.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
         const popup = new mapboxgl.Popup({ offset: 25 });
         const marcador = new mapboxgl.Marker({ color: "#e74c3c" })
-            .setLngLat([-68.1500, -16.5000])
+            .setLngLat([-68.1641599, -16.5056737])
             .setPopup(popup)
             .addTo(mapa);
 
-        // Variables Globales
         let coordenadasTrayecto = [];
-        let ultimaUbicacion = [-68.1500, -16.5000]; 
-        
-        // --- VARIABLES DE LA GEOCERCA (Dinámicas) ---
-        let geocercaCentro = [-68.1641599, -16.5056737]; 
-        let geocercaRadioKm = 0.2; 
-        let opcionesTurf = { steps: 64, units: 'kilometers' };
-        let circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
+        let ultimaUbicacion = [-68.1641599, -16.5056737]; 
 
-        // 4. EVENTOS DEL MAPA (Al cargar)
+        // --- CONFIGURACIÓN DE LA GEOCERCA ---
+        const geocercaCentro = [-68.1641599, -16.5056737]; 
+        const geocercaRadioKm = 0.2; 
+        const opcionesTurf = { steps: 64, units: 'kilometers' };
+        const circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
+
         mapa.on('load', () => {
-            // Capa de la trayectoria
+            // Capa Trayectoria
             mapa.addSource('ruta-tracker', {
                 'type': 'geojson',
                 'data': {
                     'type': 'Feature',
                     'properties': {},
-                    'geometry': {
-                        'type': 'LineString',
-                        'coordinates': coordenadasTrayecto
-                    }
+                    'geometry': { 'type': 'LineString', 'coordinates': coordenadasTrayecto }
                 }
             });
 
@@ -130,7 +124,7 @@
                 'paint': { 'line-color': '#e74c3c', 'line-width': 4, 'line-opacity': 0.7 }
             });
 
-            // Capa de la Geocerca
+            // Capa Geocerca
             mapa.addSource('fuente-geocerca', {
                 'type': 'geojson',
                 'data': circuloGeocerca
@@ -149,45 +143,14 @@
                 'source': 'fuente-geocerca',
                 'paint': { 'line-color': '#e74c3c', 'line-width': 2 }
             });
-
-            // --- FUNCIÓN PARA MOVER LA GEOCERCA ---
-            mapa.on('click', (e) => {
-                const nuevaLatitud = e.lngLat.lat;
-                const nuevaLongitud = e.lngLat.lng;
-
-                // Guardar en Firebase
-                baseDeDatos.ref('rastreo/geocerca').set({
-                    latitud: nuevaLatitud,
-                    longitud: nuevaLongitud,
-                    radio: 0.2
-                });
-            });
-
-            mapa.getCanvas().style.cursor = 'crosshair';
         });
 
-        // 5. ESCUCHA DE LA BASE DE DATOS
-
-        // A. Escuchar cambios de la Geocerca
-        const referenciaGeocerca = baseDeDatos.ref('rastreo/geocerca');
-        referenciaGeocerca.on('value', (snapshot) => {
-            const datosGeo = snapshot.val();
-            if (datosGeo) {
-                geocercaCentro = [datosGeo.longitud, datosGeo.latitud];
-                geocercaRadioKm = datosGeo.radio;
-                
-                circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
-
-                if (mapa.getSource('fuente-geocerca')) {
-                    mapa.getSource('fuente-geocerca').setData(circuloGeocerca);
-                }
-            }
-        });
-
-        // B. Escuchar la Ubicación del Estudiante
+        // 3. ESCUCHA ACTIVA A LA BASE DE DATOS
         const referenciaUbicacion = baseDeDatos.ref('rastreo/estudiante');
+
         referenciaUbicacion.on('value', (snapshot) => {
             const datos = snapshot.val();
+
             if (datos) {
                 const lat = datos.latitud;
                 const lng = datos.longitud;
@@ -196,8 +159,6 @@
 
                 const estadoUI = document.getElementById('estado');
 
-                // Interfaz UI
-                estadoUI.classList.add('conectado');
                 document.getElementById('fecha-txt').innerText = fecha;
                 document.getElementById('hora-txt').innerText = hora;
                 document.getElementById('lat-txt').innerText = lat;
@@ -207,12 +168,12 @@
                 ultimaUbicacion = nuevaCoordenada;
                 coordenadasTrayecto.push(nuevaCoordenada);
 
-                // Lógica Geocerca
+                // Validar Geocerca
                 const puntoActual = turf.point(nuevaCoordenada);
                 const estaDentro = turf.booleanPointInPolygon(puntoActual, circuloGeocerca);
 
                 if (!estaDentro) {
-                    estadoUI.innerText = "¡ALERTA! Fuera de la zona segura";
+                    estadoUI.innerText = "¡ALERTA! Fuera de la geocerca";
                     estadoUI.style.backgroundColor = "#8b0000";
                     estadoUI.style.color = "#ffffff";
                     estadoUI.style.border = "1px solid #ff0000";
@@ -223,7 +184,6 @@
                     estadoUI.style.border = "1px solid #4ade80";
                 }
 
-                // Actualizar Mapa
                 if (mapa.getSource('ruta-tracker')) {
                     mapa.getSource('ruta-tracker').setData({
                         'type': 'Feature',
@@ -239,7 +199,7 @@
             }
         });
 
-        // 6. BOTONES LATERALES
+        // 4. BOTONES
         document.getElementById('btn-toggle').addEventListener('click', () => {
             document.querySelector('aside').classList.toggle('oculto');
             setTimeout(() => { mapa.resize(); }, 300);
