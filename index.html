@@ -13,43 +13,57 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
-    <!-- Turf.js para los cálculos matemáticos de la geocerca -->
+    <!-- Turf.js -->
     <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
 
     <style>
-        /* Ajustes de diseño nativo (Flotante) */
         body { margin: 0; padding: 0; height: 100vh; width: 100vw; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden; position: relative; background-color: #f4f4f9; }
+        
         aside { position: absolute; height: 100%; top: 0; left: 0; width: 320px; background-color: #222b36; color: #ffffff; display: flex; flex-direction: column; box-shadow: 2px 0 8px rgba(0,0,0,0.3); z-index: 10; transition: transform 0.3s ease-in-out; }
         aside.oculto { transform: translateX(-320px); }
         main { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
         
         .btn-flotante { position: absolute; z-index: 20; background-color: #222b36; color: #5da9f6; border: 2px solid #5da9f6; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); transition: all 0.2s; }
         .btn-flotante:hover { background-color: #5da9f6; color: #1a222b; }
+        
         #btn-toggle { top: 20px; left: 20px; font-size: 18px; padding: 8px 14px; }
         #btn-centrar { bottom: 40px; right: 20px; }
         
-        /* Instrucción en pantalla */
-        #instruccion { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 20; background-color: rgba(34, 43, 54, 0.9); color: white; padding: 10px 20px; border-radius: 20px; font-size: 13px; font-weight: bold; pointer-events: none; border: 1px solid #5da9f6; }
+        /* NUEVO BOTÓN: Fijar Zona Segura */
+        #btn-asignar { bottom: 90px; right: 20px; background-color: #e74c3c; color: white; border-color: #c0392b; z-index: 20; }
+        #btn-asignar:hover { background-color: #c0392b; color: white; }
+
+        /* NUEVO: Mira en el centro del mapa */
+        .mira-centro { position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); pointer-events: none; z-index: 15; }
+        .mira-centro::before, .mira-centro::after { content: ''; position: absolute; background: #e74c3c; }
+        .mira-centro::before { top: 11px; left: 0; width: 24px; height: 2px; }
+        .mira-centro::after { top: 0; left: 11px; width: 2px; height: 24px; }
 
         header { background-color: #1a222b; padding: 20px; border-bottom: 1px solid #32404e; }
         header h1 { margin: 0; font-size: 18px; color: #5da9f6; text-transform: uppercase; letter-spacing: 1px; }
         section.datos-panel { padding: 20px; flex-grow: 1; overflow-y: auto; }
         
-        #estado { display: block; margin-bottom: 25px; padding: 10px; border-radius: 4px; background-color: #3b2a2a; color: #ff6b6b; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #ff6b6b; }
+        #estado { display: block; margin-bottom: 15px; padding: 10px; border-radius: 4px; background-color: #3b2a2a; color: #ff6b6b; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #ff6b6b; }
         #estado.conectado { background-color: #213b2c; color: #4ade80; border: 1px solid #4ade80; }
         
         .tarjeta-info { background-color: #2c3743; padding: 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #5da9f6; }
         .tarjeta-info h3 { margin: 0 0 8px 0; font-size: 12px; color: #90a4ae; text-transform: uppercase; }
         .tarjeta-info p { margin: 4px 0; font-size: 15px; font-family: monospace; }
         #mapa { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+        /* Estilo para el Slider del radio */
+        .slider-control { width: 100%; margin-top: 10px; cursor: pointer; accent-color: #5da9f6; }
     </style>
 </head>
 <body>
     <main>
-        <div id="instruccion">Haz clic derecho en el mapa para asignar la escuela</div>
+        <!-- Retícula/Mira central para apuntar -->
+        <div class="mira-centro"></div>
+        
         <button id="btn-toggle" class="btn-flotante">☰</button>
         <div id="mapa"></div>
-        <button id="btn-centrar" class="btn-flotante">Centrar Ubicación</button>
+        <button id="btn-asignar" class="btn-flotante">📍 Fijar Zona Aquí</button>
+        <button id="btn-centrar" class="btn-flotante">Centrar Niño</button>
     </main>
 
     <aside id="panel-lateral">
@@ -58,13 +72,22 @@
         </header>
         <section class="datos-panel">
             <span id="estado">Esperando conexión...</span>
+
+            <!-- NUEVA SECCIÓN: Configuración de Geocerca -->
+            <div class="tarjeta-info">
+                <h3>Configuración de Zona</h3>
+                <p>Radio: <span id="radio-txt" style="color:#5da9f6; font-weight:bold;">200</span> metros</p>
+                <input type="range" id="slider-radio" class="slider-control" min="50" max="1000" step="50" value="200">
+                <p style="font-size: 11px; color: #90a4ae; margin-top: 5px; line-height: 1.4;">Desliza para cambiar el tamaño. Luego mueve el mapa al colegio y pulsa "Fijar Zona Aquí".</p>
+            </div>
+
             <div class="tarjeta-info">
                 <h3>Última Actualización</h3>
-                <p>Fecha: <span id="fecha-txt">--/--/----</span></p>
                 <p>Hora: <span id="hora-txt">--:--:--</span></p>
+                <p>Fecha: <span id="fecha-txt">--/--/----</span></p>
             </div>
             <div class="tarjeta-info">
-                <h3>Coordenadas Actuales</h3>
+                <h3>Coordenadas del Niño</h3>
                 <p>Lat: <span id="lat-txt">--.------</span></p>
                 <p>Lng: <span id="lng-txt">--.------</span></p>
             </div>
@@ -85,9 +108,9 @@
         firebase.initializeApp(firebaseConfig);
         const baseDeDatos = firebase.database();
         const refEstudiante = baseDeDatos.ref('rastreo/estudiante');
-        const refGeocerca = baseDeDatos.ref('rastreo/geocerca'); // NUEVO NODO PARA LA ESCUELA
+        const refGeocerca = baseDeDatos.ref('rastreo/geocerca');
 
-        // 2. SISTEMA DE AUDIO (Alarma de advertencia)
+        // 2. SISTEMA DE AUDIO (Alarma)
         const alarmaSonora = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg');
         alarmaSonora.loop = true;
         let alarmaActivada = false;
@@ -102,21 +125,17 @@
             zoom: 15
         });
 
-        mapa.addControl(new mapboxgl.NavigationControl(), 'top-right');
-        const popup = new mapboxgl.Popup({ offset: 25 });
-        const marcador = new mapboxgl.Marker({ color: "#e74c3c" }).setLngLat([-68.1641599, -16.5056737]).setPopup(popup).addTo(mapa);
-
+        const marcador = new mapboxgl.Marker({ color: "#e74c3c" }).setLngLat([-68.1641599, -16.5056737]).addTo(mapa);
         let coordenadasTrayecto = [];
         let ultimaUbicacion = [-68.1641599, -16.5056737]; 
 
         // VARIABLES DINÁMICAS DE LA GEOCERCA
         let geocercaCentro = [-68.1641599, -16.5056737]; 
-        const geocercaRadioKm = 0.2; // 200 metros a la redonda de la escuela
+        let geocercaRadioKm = 0.2; // Ahora es variable
         const opcionesTurf = { steps: 64, units: 'kilometers' };
         let circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
 
         mapa.on('load', () => {
-            // Capa de Trayectoria
             mapa.addSource('ruta-tracker', {
                 'type': 'geojson',
                 'data': { 'type': 'Feature', 'properties': {}, 'geometry': { 'type': 'LineString', 'coordinates': coordenadasTrayecto } }
@@ -127,11 +146,10 @@
                 'paint': { 'line-color': '#e74c3c', 'line-width': 4, 'line-opacity': 0.7 }
             });
 
-            // Capa de Geocerca
             mapa.addSource('fuente-geocerca', { 'type': 'geojson', 'data': circuloGeocerca });
             mapa.addLayer({
                 'id': 'capa-geocerca-relleno', 'type': 'fill', 'source': 'fuente-geocerca',
-                'paint': { 'fill-color': '#5da9f6', 'fill-opacity': 0.3 } // Cambié el color a azul para diferenciar la escuela
+                'paint': { 'fill-color': '#5da9f6', 'fill-opacity': 0.3 }
             });
             mapa.addLayer({
                 'id': 'capa-geocerca-borde', 'type': 'line', 'source': 'fuente-geocerca',
@@ -139,79 +157,68 @@
             });
         });
 
-        // 4. NUEVO: ESCUCHAR CAMBIOS EN LA UBICACIÓN DE LA ESCUELA DESDE FIREBASE
+        // 4. LEER GEOCERCA DESDE FIREBASE Y ACTUALIZAR MAPA Y SLIDER
         refGeocerca.on('value', (snapshot) => {
             const datosGeocerca = snapshot.val();
             if (datosGeocerca) {
                 geocercaCentro = [datosGeocerca.lng, datosGeocerca.lat];
-                circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
                 
-                // Actualizar el mapa visualmente si la capa ya existe
+                // Leemos el radio guardado (o usamos 200m por defecto)
+                const radioMetrosGuardado = datosGeocerca.radio || 200; 
+                geocercaRadioKm = radioMetrosGuardado / 1000; // Convertimos a KM para Turf.js
+                
+                // Sincronizamos la interfaz
+                document.getElementById('slider-radio').value = radioMetrosGuardado;
+                document.getElementById('radio-txt').innerText = radioMetrosGuardado;
+
+                // Redibujamos el círculo
+                circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
                 if (mapa.getSource('fuente-geocerca')) {
                     mapa.getSource('fuente-geocerca').setData(circuloGeocerca);
                 }
             }
         });
 
-// 5. ASIGNAR NUEVA GEOCERCA (COMPATIBLE CON PC Y CELULAR)
-        
-        // Función central para guardar en Firebase (evita repetir código)
-        function guardarNuevaGeocerca(coordenadas) {
-            const confirmacion = confirm("¿Establecer este punto como la escuela / zona segura?");
+        // 5. ASIGNAR NUEVA GEOCERCA USANDO EL BOTÓN Y EL CENTRO DEL MAPA
+        document.getElementById('btn-asignar').addEventListener('click', () => {
+            // Obtenemos las coordenadas justo en el centro de la pantalla
+            const centroActual = mapa.getCenter();
+            // Obtenemos el tamaño seleccionado en el slider
+            const radioSeleccionado = parseInt(document.getElementById('slider-radio').value);
+
+            const confirmacion = confirm(`¿Establecer la zona segura aquí con un tamaño de ${radioSeleccionado} metros?`);
+            
             if (confirmacion) {
+                // Guardamos Latitud, Longitud Y el nuevo Radio en Firebase
                 refGeocerca.set({
-                    lat: coordenadas.lat,
-                    lng: coordenadas.lng
+                    lat: centroActual.lat,
+                    lng: centroActual.lng,
+                    radio: radioSeleccionado
                 }).then(() => {
                     alert("Zona segura actualizada con éxito.");
-                }).catch((error) => {
-                    console.error("Error al actualizar zona segura:", error);
                 });
             }
-        }
-
-        // Evento para Computadoras (Clic derecho)
-        mapa.on('contextmenu', (e) => {
-            guardarNuevaGeocerca(e.lngLat);
         });
 
-        // Eventos para Celulares (Mantener presionado)
-        let temporizadorToque;
-
-        mapa.on('touchstart', (e) => {
-            // Al tocar la pantalla, iniciamos un conteo de 1 segundo (1000 milisegundos)
-            temporizadorToque = setTimeout(() => {
-                guardarNuevaGeocerca(e.lngLat);
-            }, 1000); 
+        // 6. ACTUALIZAR EL TEXTO DEL SLIDER EN TIEMPO REAL AL MOVERLO
+        document.getElementById('slider-radio').addEventListener('input', (e) => {
+            document.getElementById('radio-txt').innerText = e.target.value;
         });
 
-        mapa.on('touchend', () => {
-            // Si el usuario levanta el dedo antes de 1 segundo (fue solo un toque normal), cancelamos
-            clearTimeout(temporizadorToque);
-        });
-
-        mapa.on('touchmove', () => {
-            // Si el usuario mueve el dedo (está arrastrando el mapa), cancelamos
-            clearTimeout(temporizadorToque);
-        });
-        // 6. ESCUCHA DE LA UBICACIÓN DEL ESTUDIANTE Y ALARMA
+        // 7. ESCUCHA DE LA UBICACIÓN DEL ESTUDIANTE Y ALARMA
         refEstudiante.on('value', (snapshot) => {
             const datos = snapshot.val();
-
             if (datos) {
-                const lat = datos.latitud;
-                const lng = datos.longitud;
-                const nuevaCoordenada = [lng, lat];
+                const nuevaCoordenada = [datos.longitud, datos.latitud];
                 
                 document.getElementById('fecha-txt').innerText = datos.fecha;
                 document.getElementById('hora-txt').innerText = datos.hora;
-                document.getElementById('lat-txt').innerText = lat;
-                document.getElementById('lng-txt').innerText = lng;
+                document.getElementById('lat-txt').innerText = datos.latitud;
+                document.getElementById('lng-txt').innerText = datos.longitud;
 
                 ultimaUbicacion = nuevaCoordenada;
                 coordenadasTrayecto.push(nuevaCoordenada);
 
-                // --- EVALUACIÓN DE LA GEOCERCA ---
                 const puntoActual = turf.point(nuevaCoordenada);
                 const estaDentro = turf.booleanPointInPolygon(puntoActual, circuloGeocerca);
                 const estadoUI = document.getElementById('estado');
@@ -222,9 +229,8 @@
                     estadoUI.style.color = "#ffffff";
                     estadoUI.style.border = "1px solid #ff0000";
                     
-                    // Disparar alarma sonora si no está sonando
                     if (!alarmaActivada) {
-                        alarmaSonora.play().catch(e => console.log("El navegador requiere que hagas clic en la pantalla antes de reproducir audio."));
+                        alarmaSonora.play().catch(e => console.log("Clic requerido para audio"));
                         alarmaActivada = true;
                     }
                 } else {
@@ -233,7 +239,6 @@
                     estadoUI.style.color = "#4ade80";
                     estadoUI.style.border = "1px solid #4ade80";
 
-                    // Apagar la alarma si regresó a la zona segura
                     if (alarmaActivada) {
                         alarmaSonora.pause();
                         alarmaSonora.currentTime = 0;
@@ -248,10 +253,7 @@
                         'geometry': { 'type': 'LineString', 'coordinates': coordenadasTrayecto }
                     });
                 }
-
                 marcador.setLngLat(nuevaCoordenada);
-                marcador.getPopup().setHTML(`<b>Estudiante</b><br>Capturado: ${datos.hora}`);
-                mapa.flyTo({ center: nuevaCoordenada, speed: 1.2, zoom: 15.5 });
             }
         });
 
