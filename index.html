@@ -12,44 +12,162 @@
     <!-- Librerías de Firebase (Versión 8 Compat) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
-    <!-- AQUÍ VA Turf.js (Antes de tu script principal) -->
+     <!-- Librería Turf.js para cálculos geoespaciales -->
     <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
 
     <style>
-        aside { transition: margin-left 0.3s ease-in-out; }
-        aside.oculto { margin-left: -320px; }
-        .btn-flotante { position: absolute; z-index: 20; background-color: #222b36; color: #5da9f6; border: 2px solid #5da9f6; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); transition: all 0.2s; }
-        .btn-flotante:hover { background-color: #5da9f6; color: #1a222b; }
+        /* Animación para ocultar el panel */
+        aside {
+            transition: margin-left 0.3s ease-in-out;
+        }
+
+        aside.oculto {
+            margin-left: -320px; /* Esconde el panel hacia la izquierda */
+        }
+
+        /* Botones Flotantes sobre el mapa */
+        .btn-flotante {
+            position: absolute;
+            z-index: 20;
+            background-color: #222b36;
+            color: #5da9f6;
+            border: 2px solid #5da9f6;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            transition: all 0.2s;
+        }
+
+        .btn-flotante:hover {
+            background-color: #5da9f6;
+            color: #1a222b;
+        }
+
+        /* Posiciones de los botones */
         #btn-toggle { top: 20px; left: 20px; font-size: 18px; padding: 8px 14px; }
         #btn-centrar { bottom: 40px; right: 20px; }
-        html { height: 100%; }
-        body { margin: 0; padding: 0; height: 100vh; width: 100vw; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; background-color: #f4f4f9; overflow: hidden; }
-        aside { width: 320px; background-color: #222b36; color: #ffffff; display: flex; flex-direction: column; box-shadow: 2px 0 8px rgba(0,0,0,0.3); z-index: 10; }
-        header { background-color: #1a222b; padding: 20px; border-bottom: 1px solid #32404e; }
-        header h1 { margin: 0; font-size: 18px; color: #5da9f6; text-transform: uppercase; letter-spacing: 1px; }
-        section.datos-panel { padding: 20px; flex-grow: 1; overflow-y: auto; }
-        #estado { display: block; margin-bottom: 25px; padding: 10px; border-radius: 4px; background-color: #3b2a2a; color: #ff6b6b; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #ff6b6b; }
-        #estado.conectado { background-color: #213b2c; color: #4ade80; border: 1px solid #4ade80; }
-        .tarjeta-info { background-color: #2c3743; padding: 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #5da9f6; }
-        .tarjeta-info h3 { margin: 0 0 8px 0; font-size: 12px; color: #90a4ae; text-transform: uppercase; }
-        .tarjeta-info p { margin: 4px 0; font-size: 15px; font-family: monospace; }
-        main { flex-grow: 1; height: 100vh; position: relative; }
-        #mapa { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+/* Reseteo general */
+        html {
+            height: 100%;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw; /* Forzamos a ocupar el 100% del ancho de la pantalla */
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex; /* Ahora el body organiza al panel y al main uno al lado del otro */
+            background-color: #f4f4f9;
+            overflow: hidden;
+        }
+
+        /* Barra Lateral Izquierda */
+        aside {
+            width: 320px;
+            background-color: #222b36;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+
+        header {
+            background-color: #1a222b;
+            padding: 20px;
+            border-bottom: 1px solid #32404e;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 18px;
+            color: #5da9f6;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        section.datos-panel {
+            padding: 20px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        #estado {
+            display: block;
+            margin-bottom: 25px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #3b2a2a;
+            color: #ff6b6b;
+            font-size: 13px;
+            font-weight: bold;
+            text-align: center;
+            border: 1px solid #ff6b6b;
+        }
+
+        #estado.conectado {
+            background-color: #213b2c;
+            color: #4ade80;
+            border: 1px solid #4ade80;
+        }
+
+        .tarjeta-info {
+            background-color: #2c3743;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 4px solid #5da9f6;
+        }
+
+        .tarjeta-info h3 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            color: #90a4ae;
+            text-transform: uppercase;
+        }
+
+        .tarjeta-info p {
+            margin: 4px 0;
+            font-size: 15px;
+            font-family: monospace;
+        }
+
+        /* Contenedor del Mapa */
+        main {
+            flex-grow: 1;
+            height: 100vh; /* Aseguramos la altura completa */
+            position: relative;
+        }
+
+        #mapa {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%; /* El mapa hereda el tamaño exacto del main */
+        }
     </style>
 </head>
 <body>
+
+    <!-- Panel Lateral Izquierdo Semántico -->
     <aside>
         <header>
             <h1>Monitoreo GPS</h1>
         </header>
         <section class="datos-panel">
             <span id="estado">Esperando conexión...</span>
+
             <div class="tarjeta-info">
                 <h3>Última Actualización</h3>
                 <p>Fecha: <span id="fecha-txt">--/--/----</span></p>
                 <p>Hora: <span id="hora-txt">--:--:--</span></p>
             </div>
+
             <div class="tarjeta-info">
                 <h3>Coordenadas Actuales</h3>
                 <p>Lat: <span id="lat-txt">--.------</span></p>
@@ -58,6 +176,7 @@
         </section>
     </aside>
 
+    <!-- Área Principal del Mapa -->
     <main>
         <button id="btn-toggle" class="btn-flotante">☰</button>
         <div id="mapa"></div>
@@ -67,14 +186,14 @@
     <script>
         // 1. CONFIGURACIÓN DE FIREBASE
         const firebaseConfig = {
-            apiKey: "AIzaSyAfc4xMCc3jEmGsgFWv_to2mkTAX_WIH3c",
-            authDomain: "rastreo-familiar-4e8b4.firebaseapp.com",
-            databaseURL: "https://rastreo-familiar-4e8b4-default-rtdb.firebaseio.com",
-            projectId: "rastreo-familiar-4e8b4",
-            storageBucket: "rastreo-familiar-4e8b4.firebasestorage.app",
-            messagingSenderId: "122524876614",
-            appId: "1:122524876614:web:e3201a8d13341e7577af47"
-        };
+  apiKey: "AIzaSyAfc4xMCc3jEmGsgFWv_to2mkTAX_WIH3c",
+  authDomain: "rastreo-familiar-4e8b4.firebaseapp.com",
+  databaseURL: "https://rastreo-familiar-4e8b4-default-rtdb.firebaseio.com",
+  projectId: "rastreo-familiar-4e8b4",
+  storageBucket: "rastreo-familiar-4e8b4.firebasestorage.app",
+  messagingSenderId: "122524876614",
+  appId: "1:122524876614:web:e3201a8d13341e7577af47"
+};
         firebase.initializeApp(firebaseConfig);
         const baseDeDatos = firebase.database();
 
@@ -84,71 +203,128 @@
         const mapa = new mapboxgl.Map({
             container: 'mapa',
             style: 'mapbox://styles/mapbox/streets-v12',
-            center: [-68.1641599, -16.5056737],
-            zoom: 15
+            center: [-68.1500, -16.5000],
+            zoom: 14
         });
 
         mapa.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
         const popup = new mapboxgl.Popup({ offset: 25 });
         const marcador = new mapboxgl.Marker({ color: "#e74c3c" })
-            .setLngLat([-68.1641599, -16.5056737])
+            .setLngLat([-68.1500, -16.5000])
             .setPopup(popup)
             .addTo(mapa);
 
+        // Array para almacenar el historial de coordenadas (Trayecto)
         let coordenadasTrayecto = [];
-        let ultimaUbicacion = [-68.1641599, -16.5056737]; 
-
-        // --- CONFIGURACIÓN DE LA GEOCERCA ---
-        const geocercaCentro = [-68.1641599, -16.5056737]; 
-        const geocercaRadioKm = 0.2; 
-        const opcionesTurf = { steps: 64, units: 'kilometers' };
-        const circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
-
+        let ultimaUbicacion = [-68.1500, -16.5000]; // Memoria para el botón de centrar
+// --- VARIABLES DE LA GEOCERCA (Ahora dinámicas) ---
+        let geocercaCentro = [-68.1641599, -16.5056737]; // Valor por defecto inicial
+        let geocercaRadioKm = 0.2; 
+        let opcionesTurf = { steps: 64, units: 'kilometers' };
+        let circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
+        // Preparamos la capa de la trayectoria una vez que el mapa cargue
         mapa.on('load', () => {
-            // Capa Trayectoria
+            // --- DIBUJAR LA GEOCERCA ---
+            mapa.addSource('fuente-geocerca', {
+                'type': 'geojson',
+                'data': circuloGeocerca
+            });
             mapa.addSource('ruta-tracker', {
                 'type': 'geojson',
                 'data': {
                     'type': 'Feature',
                     'properties': {},
-                    'geometry': { 'type': 'LineString', 'coordinates': coordenadasTrayecto }
+                    'geometry': {
+                        'type': 'LineString',
+                        'coordinates': coordenadasTrayecto
+                    }
                 }
             });
+            // --- FUNCIÓN: EL PADRE MUEVE LA GEOCERCA AL HACER CLIC ---
+        mapa.on('click', (e) => {
+            const nuevaLatitud = e.lngLat.lat;
+            const nuevaLongitud = e.lngLat.lng;
+
+            // Guardamos la nueva posición central de la geocerca en Firebase
+            baseDeDatos.ref('rastreo/geocerca').set({
+                latitud: nuevaLatitud,
+                longitud: nuevaLongitud,
+                radio: 0.2 // 200 metros por defecto (luego podrías hacer un botón para agrandarlo)
+            });
+
+            // Opcional: Mostrar un aviso al padre de que la zona cambió
+            alert("Nueva zona segura establecida");
+        });
+
+        // Cambiar el cursor a "mano" para que el padre sepa que puede hacer clic
+        mapa.getCanvas().style.cursor = 'crosshair';
 
             mapa.addLayer({
                 'id': 'linea-ruta',
                 'type': 'line',
                 'source': 'ruta-tracker',
-                'layout': { 'line-join': 'round', 'line-cap': 'round' },
-                'paint': { 'line-color': '#e74c3c', 'line-width': 4, 'line-opacity': 0.7 }
-            });
-
-            // Capa Geocerca
-            mapa.addSource('fuente-geocerca', {
-                'type': 'geojson',
-                'data': circuloGeocerca
-            });
-
-            mapa.addLayer({
-                'id': 'capa-geocerca-relleno',
-                'type': 'fill',
-                'source': 'fuente-geocerca',
-                'paint': { 'fill-color': '#e74c3c', 'fill-opacity': 0.2 }
-            });
-
-            mapa.addLayer({
-                'id': 'capa-geocerca-borde',
-                'type': 'line',
-                'source': 'fuente-geocerca',
-                'paint': { 'line-color': '#e74c3c', 'line-width': 2 }
+                'layout': {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                'paint': {
+                    'line-color': '#e74c3c', // Color de la línea de trayectoria
+                    'line-width': 4,
+                    'line-opacity': 0.7
+                }
             });
         });
 
         // 3. ESCUCHA ACTIVA A LA BASE DE DATOS
         const referenciaUbicacion = baseDeDatos.ref('rastreo/estudiante');
+        // --- ESCUCHA ACTIVA DE LA GEOCERCA DESDE FIREBASE ---
+        const referenciaGeocerca = baseDeDatos.ref('rastreo/geocerca');
+
+        referenciaGeocerca.on('value', (snapshot) => {
+            const datosGeo = snapshot.val();
+
+            if (datosGeo) {
+                // Actualizamos las variables con los datos de Firebase
+                geocercaCentro = [datosGeo.longitud, datosGeo.latitud];
+                geocercaRadioKm = datosGeo.radio;
+
+                // Volvemos a calcular el círculo con Turf.js en la nueva posición
+                circuloGeocerca = turf.circle(geocercaCentro, geocercaRadioKm, opcionesTurf);
+
+                // Si el mapa ya cargó las capas, actualizamos el dibujo del círculo rojo
+                if (mapa.getSource('fuente-geocerca')) {
+                    mapa.getSource('fuente-geocerca').setData(circuloGeocerca);
+                }
+            }
+        });
 
         referenciaUbicacion.on('value', (snapshot) => {
+            // Actualizar Trayectoria
+                const nuevaCoordenada = [lng, lat];
+                ultimaUbicacion = nuevaCoordenada;
+                coordenadasTrayecto.push(nuevaCoordenada);
+
+                // --- LÓGICA DE LA GEOCERCA ---
+                const puntoActual = turf.point(nuevaCoordenada);
+                // booleanPointInPolygon verifica si el punto está dentro del círculo
+                const estaDentro = turf.booleanPointInPolygon(puntoActual, circuloGeocerca);
+
+                if (!estaDentro) {
+                    // ¡El dispositivo salió de la geocerca!
+                    estadoUI.innerText = "¡ALERTA! Fuera de la zona segura";
+                    estadoUI.style.backgroundColor = "#8b0000"; // Rojo oscuro
+                    estadoUI.style.color = "#ffffff";
+                    estadoUI.style.border = "1px solid #ff0000";
+                    // Opcional: mostrar un alert nativo del navegador
+                    // alert("El dispositivo ha salido de la zona establecida.");
+                } else {
+                    // Está dentro de la geocerca
+                    estadoUI.innerText = "Satélite Conectado - Dentro de zona";
+                    estadoUI.style.backgroundColor = "#213b2c";
+                    estadoUI.style.color = "#4ade80";
+                    estadoUI.style.border = "1px solid #4ade80";
+                }
             const datos = snapshot.val();
 
             if (datos) {
@@ -157,57 +333,65 @@
                 const hora = datos.hora;
                 const fecha = datos.fecha;
 
+                // Actualizar interfaz lateral
                 const estadoUI = document.getElementById('estado');
+                estadoUI.innerText = "Satélite Conectado - Recibiendo datos";
+                estadoUI.classList.add('conectado');
 
                 document.getElementById('fecha-txt').innerText = fecha;
                 document.getElementById('hora-txt').innerText = hora;
                 document.getElementById('lat-txt').innerText = lat;
                 document.getElementById('lng-txt').innerText = lng;
 
+                // Actualizar Trayectoria
                 const nuevaCoordenada = [lng, lat];
                 ultimaUbicacion = nuevaCoordenada;
                 coordenadasTrayecto.push(nuevaCoordenada);
 
-                // Validar Geocerca
-                const puntoActual = turf.point(nuevaCoordenada);
-                const estaDentro = turf.booleanPointInPolygon(puntoActual, circuloGeocerca);
-
-                if (!estaDentro) {
-                    estadoUI.innerText = "¡ALERTA! Fuera de la geocerca";
-                    estadoUI.style.backgroundColor = "#8b0000";
-                    estadoUI.style.color = "#ffffff";
-                    estadoUI.style.border = "1px solid #ff0000";
-                } else {
-                    estadoUI.innerText = "Satélite Conectado - Dentro de zona";
-                    estadoUI.style.backgroundColor = "#213b2c";
-                    estadoUI.style.color = "#4ade80";
-                    estadoUI.style.border = "1px solid #4ade80";
-                }
-
+                // Refrescar el mapa con el nuevo array si la capa ya existe
                 if (mapa.getSource('ruta-tracker')) {
                     mapa.getSource('ruta-tracker').setData({
                         'type': 'Feature',
                         'properties': {},
-                        'geometry': { 'type': 'LineString', 'coordinates': coordenadasTrayecto }
+                        'geometry': {
+                            'type': 'LineString',
+                            'coordinates': coordenadasTrayecto
+                        }
                     });
                 }
 
+                // Actualizar marcador
                 marcador.setLngLat(nuevaCoordenada);
                 marcador.getPopup().setHTML(`<b>Dispositivo Activo</b><br>Capturado: ${hora}`);
 
-                mapa.flyTo({ center: nuevaCoordenada, speed: 1.2, zoom: 15.5 });
+                // Mover cámara
+                mapa.flyTo({
+                    center: nuevaCoordenada,
+                    speed: 1.2,
+                    zoom: 15.5
+                });
             }
         });
-
-        // 4. BOTONES
+        // 4. FUNCIONALIDAD DE LOS BOTONES
+        // Botón para abrir/cerrar el panel lateral
         document.getElementById('btn-toggle').addEventListener('click', () => {
             document.querySelector('aside').classList.toggle('oculto');
-            setTimeout(() => { mapa.resize(); }, 300);
+            
+            // Le damos tiempo a la animación para terminar y reajustamos el mapa
+            setTimeout(() => {
+                mapa.resize();
+            }, 300);
         });
 
+        // Botón para centrar la cámara
         document.getElementById('btn-centrar').addEventListener('click', () => {
-            mapa.flyTo({ center: ultimaUbicacion, zoom: 16, speed: 1.5 });
+            mapa.flyTo({
+                center: ultimaUbicacion,
+                zoom: 16,
+                speed: 1.5
+            });
         });
     </script>
+   
 </body>
 </html>
