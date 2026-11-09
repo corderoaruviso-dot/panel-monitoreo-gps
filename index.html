@@ -34,12 +34,14 @@
         #btn-guardar-zona { bottom: 40px; right: 20px; background-color: #4ade80; color: #1a222b; border-color: #4ade80; display: none; }
         #btn-guardar-zona:hover { background-color: #213b2c; color: #4ade80; }
 
+        #btn-cancelar-edicion { bottom: 90px; right: 20px; background-color: #e74c3c; color: white; border-color: #c0392b; display: none; }
+        #btn-cancelar-edicion:hover { background-color: #c0392b; }
+
         header { background-color: #1a222b; padding: 20px; border-bottom: 1px solid #32404e; }
         header h1 { margin: 0; font-size: 18px; color: #5da9f6; text-transform: uppercase; letter-spacing: 1px; }
         
         section.datos-panel { padding: 20px; flex-grow: 1; overflow-y: auto; }
         
-        /* Estilos de las tarjetas del Gestor de Dispositivos */
         .tarjeta-dispositivo { background-color: #2c3743; padding: 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #5da9f6; position: relative; }
         .tarjeta-dispositivo h3 { margin: 0 0 8px 0; font-size: 14px; color: #ffffff; display: flex; justify-content: space-between; align-items: center;}
         .tarjeta-dispositivo p { margin: 4px 0; font-size: 12px; color: #90a4ae; font-family: monospace; }
@@ -49,23 +51,34 @@
         .estado-peligro { background-color: #3b2a2a; color: #ff6b6b; border: 1px solid #ff6b6b; }
         .estado-sinzona { background-color: #32404e; color: #90a4ae; border: 1px solid #90a4ae; }
 
-        .botones-accion { display: flex; gap: 8px; margin-top: 12px; }
-        .btn-accion { flex: 1; padding: 8px; font-size: 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        /* Contenedor principal de botones de acción */
+        .botones-accion-contenedor { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+        
+        /* Fila para botones principales */
+        .botones-fila { display: flex; gap: 8px; }
+        
+        .btn-accion { flex: 1; padding: 8px; font-size: 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; text-align: center; }
+        
         .btn-centrar { background-color: #32404e; color: #5da9f6; border: 1px solid #5da9f6; }
         .btn-centrar:hover { background-color: #5da9f6; color: #1a222b; }
-        .btn-editar { background-color: #e74c3c; color: white; }
-        .btn-editar:hover { background-color: #c0392b; }
+        
+        .btn-editar { background-color: #f39c12; color: white; }
+        .btn-editar:hover { background-color: #d68910; }
+
+        .btn-eliminar { background-color: #e74c3c; color: white; margin-top: 4px; }
+        .btn-eliminar:hover { background-color: #c0392b; }
 
         #mapa { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
-        .instruccion-edicion { display: none; background: #e74c3c; color: white; padding: 10px; text-align: center; font-size: 13px; font-weight: bold; }
+        .instruccion-edicion { display: none; background: #f39c12; color: #1a222b; padding: 10px; text-align: center; font-size: 13px; font-weight: bold; border-bottom: 2px solid #d68910; }
     </style>
 </head>
 <body>
     <main>
         <button id="btn-toggle" class="btn-flotante">☰</button>
         <div id="mapa"></div>
-        <button id="btn-guardar-zona" class="btn-flotante">💾 Guardar Nueva Geocerca</button>
+        <button id="btn-guardar-zona" class="btn-flotante">💾 Guardar Geocerca</button>
+        <button id="btn-cancelar-edicion" class="btn-flotante">❌ Cancelar</button>
     </main>
 
     <aside id="panel-lateral">
@@ -73,10 +86,9 @@
             <h1>Gestor de Dispositivos</h1>
         </header>
         <div id="mensaje-edicion" class="instruccion-edicion">
-            Modo Edición: Dibuja un polígono (Máximo 8 puntos)
+            Modo Edición: Arrastra los vértices o dibuja uno nuevo (Máx 8 puntos)
         </div>
         <section class="datos-panel" id="lista-dispositivos">
-            <!-- Las tarjetas de dispositivos se inyectarán aquí con JavaScript -->
             <p style="color: #90a4ae; font-size: 13px; text-align: center;">Esperando conexión de dispositivos...</p>
         </section>
     </aside>
@@ -92,10 +104,10 @@
             messagingSenderId: "122524876614",
             appId: "1:122524876614:web:e3201a8d13341e7577af47"
         };
-        firebase.initializeApp(firebaseConfig);
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
         const baseDeDatos = firebase.database();
-        
-        // NUEVA ESTRUCTURA: Escuchamos todo el nodo de "dispositivos"
         const refDispositivos = baseDeDatos.ref('rastreo/dispositivos');
 
         // 2. SISTEMA DE AUDIO
@@ -113,7 +125,7 @@
             zoom: 15
         });
 
-        // Inicializamos Mapbox Draw para polígonos
+        // Configuración de Mapbox Draw para permitir edición directa
         const draw = new MapboxDraw({
             displayControlsDefault: false,
             controls: { polygon: true, trash: true },
@@ -121,93 +133,101 @@
         });
         mapa.addControl(draw, 'top-right');
 
-        // Variables de estado local
-        let marcadores = {}; // Guarda los objetos mapboxgl.Marker
-        let dispositivoEnEdicion = null; // ID del dispositivo al que le estamos dibujando la zona
+        let marcadores = {}; 
+        let dispositivoEnEdicion = null; 
 
         // 4. LECTURA DE DISPOSITIVOS EN TIEMPO REAL
         refDispositivos.on('value', (snapshot) => {
             const dispositivos = snapshot.val();
             const contenedorLista = document.getElementById('lista-dispositivos');
-            contenedorLista.innerHTML = ''; // Limpiamos lista
             
-            let algunNinoEnPeligro = false;
+            // Solo actualizamos la lista si NO estamos en modo edición para no interrumpir al usuario
+            if (dispositivoEnEdicion === null) {
+                contenedorLista.innerHTML = ''; 
+                let algunNinoEnPeligro = false;
 
-            if (dispositivos) {
-                Object.keys(dispositivos).forEach(id => {
-                    const data = dispositivos[id];
-                    if (!data.ubicacion) return; // Si no tiene ubicación aún, lo saltamos
+                if (dispositivos) {
+                    Object.keys(dispositivos).forEach(id => {
+                        const data = dispositivos[id];
+                        if (!data.ubicacion) return;
 
-                    const coordActual = [data.ubicacion.longitud, data.ubicacion.latitud];
-                    
-                    // A. GESTIÓN DEL MARCADOR EN EL MAPA
-                    if (!marcadores[id]) {
-                        // Creamos un nuevo marcador si no existe
-                        marcadores[id] = new mapboxgl.Marker({ color: "#e74c3c" })
-                            .setLngLat(coordActual)
-                            .setPopup(new mapboxgl.Popup({ offset: 25 }).setText(data.nombre || 'Dispositivo ' + id))
-                            .addTo(mapa);
-                    } else {
-                        // Actualizamos posición
-                        marcadores[id].setLngLat(coordActual);
-                    }
-
-                    // B. LÓGICA DE GEOCERCA (POLÍGONO)
-                    let estadoActual = "SIN ZONA ASIGNADA";
-                    let claseEstado = "estado-sinzona";
-                    let estaSeguro = true;
-
-                    if (data.geocerca && data.geocerca.geometry) {
-                        const puntoActual = turf.point(coordActual);
-                        const poligonoZona = data.geocerca;
-
-                        // Dibujar geocerca en el mapa si NO la estamos editando en este momento
-                        dibujarGeocercaEstatica(id, poligonoZona);
-
-                        // Verificamos si está dentro del polígono
-                        const estaDentro = turf.booleanPointInPolygon(puntoActual, poligonoZona);
+                        const coordActual = [data.ubicacion.longitud, data.ubicacion.latitud];
                         
-                        if (estaDentro) {
-                            estadoActual = "SEGURO - EN ZONA";
-                            claseEstado = "estado-seguro";
+                        if (!marcadores[id]) {
+                            marcadores[id] = new mapboxgl.Marker({ color: "#e74c3c" })
+                                .setLngLat(coordActual)
+                                .setPopup(new mapboxgl.Popup({ offset: 25 }).setText(data.nombre || 'Dispositivo ' + id))
+                                .addTo(mapa);
                         } else {
-                            estadoActual = "¡ALERTA! FUERA DE ZONA";
-                            claseEstado = "estado-peligro";
-                            estaSeguro = false;
-                            algunNinoEnPeligro = true;
+                            marcadores[id].setLngLat(coordActual);
                         }
-                    } else {
-                        // Si no tiene geocerca borramos cualquier capa residual
-                        borrarGeocercaEstatica(id);
+
+                        let estadoActual = "SIN ZONA ASIGNADA";
+                        let claseEstado = "estado-sinzona";
+
+                        if (data.geocerca && data.geocerca.geometry) {
+                            const puntoActual = turf.point(coordActual);
+                            const poligonoZona = data.geocerca;
+
+                            dibujarGeocercaEstatica(id, poligonoZona);
+
+                            const estaDentro = turf.booleanPointInPolygon(puntoActual, poligonoZona);
+                            
+                            if (estaDentro) {
+                                estadoActual = "SEGURO - EN ZONA";
+                                claseEstado = "estado-seguro";
+                            } else {
+                                estadoActual = "¡ALERTA! FUERA DE ZONA";
+                                claseEstado = "estado-peligro";
+                                algunNinoEnPeligro = true;
+                            }
+                        } else {
+                            borrarGeocercaEstatica(id);
+                        }
+
+                        // Botón de eliminar solo aparece si hay una geocerca
+                        const botonEliminarHTML = data.geocerca ? 
+                            `<button class="btn-accion btn-eliminar" onclick="eliminarZona('${id}')">🗑️ Eliminar Zona Actual</button>` : '';
+
+                        const tarjeta = document.createElement('div');
+                        tarjeta.className = 'tarjeta-dispositivo';
+                        tarjeta.innerHTML = `
+                            <h3>${data.nombre || 'Hijo: ' + id.substring(0,6)} <span class="estado-chip ${claseEstado}">${estadoActual}</span></h3>
+                            <p>Última act: ${data.ubicacion.hora || '--:--'} | ${data.ubicacion.fecha || '--/--'}</p>
+                            <p>Lat: ${data.ubicacion.latitud}</p>
+                            <p>Lng: ${data.ubicacion.longitud}</p>
+                            <div class="botones-accion-contenedor">
+                                <div class="botones-fila">
+                                    <button class="btn-accion btn-centrar" onclick="centrarDispositivo('${id}')">📍 Centrar</button>
+                                    <button class="btn-accion btn-editar" onclick="iniciarEdicionZona('${id}')">✏️ Editar Zona</button>
+                                </div>
+                                ${botonEliminarHTML}
+                            </div>
+                        `;
+                        contenedorLista.appendChild(tarjeta);
+                    });
+
+                    if (algunNinoEnPeligro && !alarmaSonando) {
+                        alarmaSonora.play().catch(e => console.log("Se requiere clic para audio"));
+                        alarmaSonando = true;
+                    } else if (!algunNinoEnPeligro && alarmaSonando) {
+                        alarmaSonora.pause();
+                        alarmaSonora.currentTime = 0;
+                        alarmaSonando = false;
                     }
-
-                    // C. CREACIÓN DE TARJETA EN LA UI
-                    const tarjeta = document.createElement('div');
-                    tarjeta.className = 'tarjeta-dispositivo';
-                    tarjeta.innerHTML = `
-                        <h3>${data.nombre || 'Hijo: ' + id.substring(0,6)} <span class="estado-chip ${claseEstado}">${estadoActual}</span></h3>
-                        <p>Última act: ${data.ubicacion.hora || '--:--'} | ${data.ubicacion.fecha || '--/--'}</p>
-                        <p>Lat: ${data.ubicacion.latitud}</p>
-                        <p>Lng: ${data.ubicacion.longitud}</p>
-                        <div class="botones-accion">
-                            <button class="btn-accion btn-centrar" onclick="centrarDispositivo('${id}')">📍 Centrar</button>
-                            <button class="btn-accion btn-editar" onclick="iniciarEdicionZona('${id}')">✏️ Editar Zona</button>
-                        </div>
-                    `;
-                    contenedorLista.appendChild(tarjeta);
-                });
-
-                // Control del sonido de alarma general
-                if (algunNinoEnPeligro && !alarmaSonando) {
-                    alarmaSonora.play().catch(e => console.log("Se requiere clic para audio"));
-                    alarmaSonando = true;
-                } else if (!algunNinoEnPeligro && alarmaSonando) {
-                    alarmaSonora.pause();
-                    alarmaSonora.currentTime = 0;
-                    alarmaSonando = false;
+                } else {
+                    contenedorLista.innerHTML = '<p style="color: #90a4ae; font-size: 13px; text-align: center;">No hay dispositivos registrados.</p>';
                 }
             } else {
-                contenedorLista.innerHTML = '<p style="color: #90a4ae; font-size: 13px; text-align: center;">No hay dispositivos registrados.</p>';
+                 // Si estamos editando, solo actualizamos los marcadores en el mapa, no la interfaz de la tarjeta
+                 if (dispositivos) {
+                    Object.keys(dispositivos).forEach(id => {
+                        const data = dispositivos[id];
+                        if (data.ubicacion && marcadores[id]) {
+                            marcadores[id].setLngLat([data.ubicacion.longitud, data.ubicacion.latitud]);
+                        }
+                    });
+                 }
             }
         });
 
@@ -217,7 +237,6 @@
             const layerFillId = 'capa-relleno-' + id;
             const layerLineId = 'capa-linea-' + id;
 
-            // Si está en edición por el plugin Draw, no dibujamos la estática para que no se superpongan
             if (dispositivoEnEdicion === id) return;
 
             if (mapa.getSource(sourceId)) {
@@ -241,7 +260,7 @@
             if (mapa.getSource('fuente-zona-' + id)) mapa.removeSource('fuente-zona-' + id);
         }
 
-        // 6. FUNCIONES DE BOTONES UI (Centrar)
+        // 6. FUNCIONES DE BOTONES UI
         window.centrarDispositivo = function(id) {
             const marker = marcadores[id];
             if (marker) {
@@ -249,50 +268,86 @@
             }
         };
 
-        // 7. LÓGICA DE DIBUJO DE POLÍGONOS (Máximo 8 puntos)
+        window.eliminarZona = function(id) {
+            if(confirm("¿Estás seguro de que deseas eliminar la zona segura para este dispositivo?")) {
+                refDispositivos.child(id).child('geocerca').remove().then(() => {
+                    borrarGeocercaEstatica(id);
+                    alert("Geocerca eliminada.");
+                });
+            }
+        };
+
+        // 7. LÓGICA DE DIBUJO Y EDICIÓN
         window.iniciarEdicionZona = function(id) {
             dispositivoEnEdicion = id;
-            draw.deleteAll(); // Limpiamos el canvas de dibujo
-            borrarGeocercaEstatica(id); // Ocultamos la versión estática temporalmente
+            draw.deleteAll(); 
+            borrarGeocercaEstatica(id); 
             
             document.getElementById('btn-guardar-zona').style.display = 'block';
+            document.getElementById('btn-cancelar-edicion').style.display = 'block';
             document.getElementById('mensaje-edicion').style.display = 'block';
             
-            // Si ya tenía geocerca, la cargamos en el editor
+            // Bloqueamos clics en otras tarjetas mientras editamos
+            document.getElementById('lista-dispositivos').style.pointerEvents = 'none';
+            document.getElementById('lista-dispositivos').style.opacity = '0.6';
+
             refDispositivos.child(id).child('geocerca').once('value').then(snap => {
                 if (snap.exists()) {
-                    draw.add(snap.val());
+                    const featureIds = draw.add(snap.val());
+                    // FORZAR MODO DE EDICIÓN DIRECTA PARA MOVER VÉRTICES
+                    if(featureIds && featureIds.length > 0){
+                         draw.changeMode('direct_select', { featureId: featureIds[0] });
+                    }
+                } else {
+                    draw.changeMode('draw_polygon');
                 }
             });
 
-            // Centramos la cámara en el marcador para facilitar el dibujo
             centrarDispositivo(id);
-            draw.changeMode('draw_polygon');
         };
 
-        // RESTRICCIÓN DE 8 PUNTOS: Escuchamos los cambios del plugin Draw
+        function salirModoEdicion() {
+            dispositivoEnEdicion = null;
+            draw.deleteAll();
+            document.getElementById('btn-guardar-zona').style.display = 'none';
+            document.getElementById('btn-cancelar-edicion').style.display = 'none';
+            document.getElementById('mensaje-edicion').style.display = 'none';
+            
+            document.getElementById('lista-dispositivos').style.pointerEvents = 'auto';
+            document.getElementById('lista-dispositivos').style.opacity = '1';
+            
+            // Forzamos la recarga visual de la lista simulando un pequeño cambio
+            refDispositivos.once('value').then(snap => {
+                // Al volver a leer, el listener 'on' se encargará de redibujar la lista y las geocercas estáticas
+                refDispositivos.set(snap.val()); 
+            });
+        }
+
+        document.getElementById('btn-cancelar-edicion').addEventListener('click', () => {
+            salirModoEdicion();
+        });
+
+        // RESTRICCIÓN DE 8 PUNTOS
         mapa.on('draw.create', validarPuntosGeocerca);
         mapa.on('draw.update', validarPuntosGeocerca);
 
         function validarPuntosGeocerca(e) {
             const feature = e.features[0];
-            // En un polígono GeoJSON, el arreglo de coordenadas cierra en sí mismo, 
-            // por lo tanto 8 vértices equivalen a 9 coordenadas (el punto 9 es idéntico al 1).
             const coords = feature.geometry.coordinates[0];
             
             if (coords.length > 9) {
-                alert("Restricción del sistema: La geocerca solo puede tener un máximo de 8 puntos. Por favor redúcelos.");
-                
-                // Truncamos el arreglo de coordenadas para forzar los 8 puntos + 1 cierre
+                alert("Restricción del sistema: La geocerca solo puede tener un máximo de 8 puntos. Se ha truncado la forma.");
                 const nuevasCoords = coords.slice(0, 8);
-                nuevasCoords.push(nuevasCoords[0]); // Cerramos la figura
+                nuevasCoords.push(nuevasCoords[0]); 
                 
                 feature.geometry.coordinates[0] = nuevasCoords;
-                draw.add(feature); // Actualizamos la figura forzando el límite
+                draw.add(feature); 
+                // Volvemos al modo de edición para que sigan acomodando los puntos truncados
+                draw.changeMode('direct_select', { featureId: feature.id });
             }
         }
 
-        // GUARDAR GEOCERCA EN FIREBASE
+        // GUARDAR GEOCERCA
         document.getElementById('btn-guardar-zona').addEventListener('click', () => {
             const datosDibujados = draw.getAll();
             if (datosDibujados.features.length === 0) {
@@ -300,16 +355,13 @@
                 return;
             }
 
-            const poligono = datosDibujados.features[0]; // Tomamos el primer polígono
+            const poligono = datosDibujados.features[0]; 
             
             if (dispositivoEnEdicion) {
                 refDispositivos.child(dispositivoEnEdicion).child('geocerca').set(poligono)
                 .then(() => {
-                    alert("Geocerca personalizada guardada con éxito.");
-                    document.getElementById('btn-guardar-zona').style.display = 'none';
-                    document.getElementById('mensaje-edicion').style.display = 'none';
-                    draw.deleteAll();
-                    dispositivoEnEdicion = null; // Salimos del modo edición
+                    alert("Geocerca guardada con éxito.");
+                    salirModoEdicion();
                 });
             }
         });
