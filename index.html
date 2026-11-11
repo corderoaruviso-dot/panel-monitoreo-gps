@@ -3,24 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Monitoreo - Gestor de Dispositivos</title>
+    <title>Panel de Monitoreo - Gestor de Dispositivos (Múltiples Zonas)</title>
 
-    <!-- Librerías de Mapbox GL JS -->
     <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
     <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
     
-    <!-- Librería de Mapbox Draw para dibujar polígonos -->
     <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js'></script>
     <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css' type='text/css' />
 
-    <!-- Librerías de Firebase (Versión 8 Compat) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
-    <!-- Turf.js -->
     <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
 
     <style>
+        /* (Se mantienen los estilos anteriores, puedes agregar este si lo deseas) */
         body { margin: 0; padding: 0; height: 100vh; width: 100vw; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden; position: relative; background-color: #f4f4f9; }
         
         aside { position: absolute; height: 100%; top: 0; left: 0; width: 350px; background-color: #222b36; color: #ffffff; display: flex; flex-direction: column; box-shadow: 2px 0 8px rgba(0,0,0,0.3); z-index: 10; transition: transform 0.3s ease-in-out; }
@@ -68,7 +65,6 @@
         
         .instruccion-edicion { display: none; background: #f39c12; color: #1a222b; padding: 10px; text-align: center; font-size: 13px; font-weight: bold; border-bottom: 2px solid #d68910; }
 
-        /* NUEVO: Diseño de la notificación amigable (Toast) */
         .toast-alerta {
             position: fixed;
             top: 20px;
@@ -96,13 +92,12 @@
     </style>
 </head>
 <body>
-    <!-- NOTIFICACIÓN FLOTANTE -->
     <div id="toast-alerta" class="toast-alerta"></div>
 
     <main>
         <button id="btn-toggle" class="btn-flotante">☰</button>
         <div id="mapa"></div>
-        <button id="btn-guardar-zona" class="btn-flotante">💾 Guardar Geocerca</button>
+        <button id="btn-guardar-zona" class="btn-flotante">💾 Guardar Geocercas</button>
         <button id="btn-cancelar-edicion" class="btn-flotante">❌ Cancelar</button>
     </main>
 
@@ -111,7 +106,7 @@
             <h1>Gestor de Dispositivos</h1>
         </header>
         <div id="mensaje-edicion" class="instruccion-edicion">
-            Modo Edición: Dibuja o arrastra vértices.<br>Límite: Máximo 8 puntos.
+            Modo Edición: Dibuja N geocercas.<br>Límite por zona: Máximo 8 puntos.
         </div>
         <section class="datos-panel" id="lista-dispositivos">
             <p style="color: #90a4ae; font-size: 13px; text-align: center;">Esperando conexión de dispositivos...</p>
@@ -133,12 +128,10 @@
         const baseDeDatos = firebase.database();
         const refDispositivos = baseDeDatos.ref('rastreo/dispositivos');
 
-        // 2. SISTEMAS DE AUDIO Y NOTIFICACIONES UI
         const alarmaSonora = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg');
         alarmaSonora.loop = true;
         let alarmaSonando = false;
 
-        // Función para mostrar mensajes sin interrumpir al usuario
         function mostrarToast(mensaje, tipo = "error") {
             const toast = document.getElementById('toast-alerta');
             toast.innerText = mensaje;
@@ -151,7 +144,6 @@
             setTimeout(() => { toast.classList.remove('mostrar'); }, 3500);
         }
 
-        // 3. CONFIGURACIÓN DE MAPBOX Y MAPBOX DRAW
         mapboxgl.accessToken = 'pk.eyJ1IjoiZ29yZG9nYXRvNDAwIiwiYSI6ImNtc3huMm9vbzA0b2szNXBwcXp1c3JleGcifQ.I1nn6YTXVD8_0EDEUeO5_Q'; 
         
         const mapa = new mapboxgl.Map({
@@ -161,6 +153,7 @@
             zoom: 15
         });
 
+        // Configuración Draw: Permite múltiples polígonos
         const draw = new MapboxDraw({
             displayControlsDefault: false,
             controls: { polygon: true, trash: true },
@@ -170,9 +163,9 @@
 
         let marcadores = {}; 
         let dispositivoEnEdicion = null; 
-        let poligonoBackup = null; // Guardará el estado válido del polígono
+        let poligonosBackup = {}; // Ahora necesitamos un diccionario para respaldar las zonas
 
-        // 4. LECTURA DE DISPOSITIVOS EN TIEMPO REAL
+        // 2. LECTURA DE DISPOSITIVOS EN TIEMPO REAL
         refDispositivos.on('value', (snapshot) => {
             const dispositivos = snapshot.val();
             const contenedorLista = document.getElementById('lista-dispositivos');
@@ -199,27 +192,56 @@
 
                         let estadoActual = "SIN ZONA ASIGNADA";
                         let claseEstado = "estado-sinzona";
+                        let estaSeguro = false;
 
-                        if (data.geocerca && data.geocerca.geometry) {
+                        // NUEVO: Manejo de un arreglo de geocercas
+                        if (data.geocercas && Array.isArray(data.geocercas) && data.geocercas.length > 0) {
                             const puntoActual = turf.point(coordActual);
-                            const poligonoZona = data.geocerca;
+                            
+                            // Borramos las estáticas viejas antes de redibujar
+                            borrarGeocercasEstaticas(id);
 
-                            dibujarGeocercaEstatica(id, poligonoZona);
+                            // Iteramos sobre todas las zonas para dibujar y comprobar
+                            data.geocercas.forEach((zona, index) => {
+                                dibujarGeocercaEstatica(id, zona, index);
+                                if (turf.booleanPointInPolygon(puntoActual, zona)) {
+                                    estaSeguro = true;
+                                }
+                            });
 
-                            if (turf.booleanPointInPolygon(puntoActual, poligonoZona)) {
+                            if (estaSeguro) {
                                 estadoActual = "SEGURO - EN ZONA";
                                 claseEstado = "estado-seguro";
                             } else {
-                                estadoActual = "¡ALERTA! FUERA DE ZONA";
+                                estadoActual = "¡ALERTA! FUERA DE ZONAS";
                                 claseEstado = "estado-peligro";
                                 algunNinoEnPeligro = true;
                             }
                         } else {
-                            borrarGeocercaEstatica(id);
+                            // Compatibilidad hacia atrás (por si tienes la zona vieja "geocerca" guardada)
+                             if (data.geocerca) {
+                                 // Moveremos la vieja geocerca a un array en el siguiente guardado
+                                 const puntoActual = turf.point(coordActual);
+                                 dibujarGeocercaEstatica(id, data.geocerca, 0);
+                                 if (turf.booleanPointInPolygon(puntoActual, data.geocerca)) {
+                                     estaSeguro = true;
+                                 }
+                                 if (estaSeguro) {
+                                     estadoActual = "SEGURO - EN ZONA";
+                                     claseEstado = "estado-seguro";
+                                 } else {
+                                     estadoActual = "¡ALERTA! FUERA DE ZONA";
+                                     claseEstado = "estado-peligro";
+                                     algunNinoEnPeligro = true;
+                                 }
+                             } else {
+                                borrarGeocercasEstaticas(id);
+                             }
                         }
 
-                        const botonEliminarHTML = data.geocerca ? 
-                            `<button class="btn-accion btn-eliminar" onclick="eliminarZona('${id}')">🗑️ Eliminar Zona Actual</button>` : '';
+                        const tieneZonas = (data.geocercas && data.geocercas.length > 0) || data.geocerca;
+                        const botonEliminarHTML = tieneZonas ? 
+                            `<button class="btn-accion btn-eliminar" onclick="eliminarZonas('${id}')">🗑️ Eliminar Todas Las Zonas</button>` : '';
 
                         const tarjeta = document.createElement('div');
                         tarjeta.className = 'tarjeta-dispositivo';
@@ -231,7 +253,7 @@
                             <div class="botones-accion-contenedor">
                                 <div class="botones-fila">
                                     <button class="btn-accion btn-centrar" onclick="centrarDispositivo('${id}')">📍 Centrar</button>
-                                    <button class="btn-accion btn-editar" onclick="iniciarEdicionZona('${id}')">✏️ Editar Zona</button>
+                                    <button class="btn-accion btn-editar" onclick="iniciarEdicionZona('${id}')">✏️ Editar Zonas</button>
                                 </div>
                                 ${botonEliminarHTML}
                             </div>
@@ -262,21 +284,39 @@
             }
         });
 
-        // 5. FUNCIONES DE UI Y MAPA ESTÁTICO
-        function dibujarGeocercaEstatica(id, geojsonPoly) {
-            const sourceId = 'fuente-zona-' + id;
+        // 3. FUNCIONES DE UI Y MAPA ESTÁTICO (Adaptado para N zonas)
+        function dibujarGeocercaEstatica(id, geojsonPoly, indice) {
+            const sourceId = `fuente-zona-${id}-${indice}`;
             if (dispositivoEnEdicion === id) return;
 
             if (mapa.getSource(sourceId)) {
                 mapa.getSource(sourceId).setData(geojsonPoly);
             } else {
                 mapa.addSource(sourceId, { 'type': 'geojson', 'data': geojsonPoly });
-                mapa.addLayer({ 'id': 'capa-relleno-' + id, 'type': 'fill', 'source': sourceId, 'paint': { 'fill-color': '#5da9f6', 'fill-opacity': 0.3 } });
-                mapa.addLayer({ 'id': 'capa-linea-' + id, 'type': 'line', 'source': sourceId, 'paint': { 'line-color': '#5da9f6', 'line-width': 2 } });
+                mapa.addLayer({ 'id': `capa-relleno-${id}-${indice}`, 'type': 'fill', 'source': sourceId, 'paint': { 'fill-color': '#5da9f6', 'fill-opacity': 0.3 } });
+                mapa.addLayer({ 'id': `capa-linea-${id}-${indice}`, 'type': 'line', 'source': sourceId, 'paint': { 'line-color': '#5da9f6', 'line-width': 2 } });
             }
         }
 
-        function borrarGeocercaEstatica(id) {
+        function borrarGeocercasEstaticas(id) {
+            // Buscamos todas las capas y fuentes asociadas a este ID
+            const capas = mapa.getStyle().layers;
+            if (capas) {
+                capas.forEach(capa => {
+                    if (capa.id.startsWith(`capa-relleno-${id}-`) || capa.id.startsWith(`capa-linea-${id}-`)) {
+                        mapa.removeLayer(capa.id);
+                    }
+                });
+            }
+            const fuentes = mapa.getStyle().sources;
+            if (fuentes) {
+                Object.keys(fuentes).forEach(fuenteId => {
+                    if (fuenteId.startsWith(`fuente-zona-${id}-`)) {
+                        mapa.removeSource(fuenteId);
+                    }
+                });
+            }
+            // También borramos la capa vieja "geocerca" si existe
             if (mapa.getLayer('capa-relleno-' + id)) mapa.removeLayer('capa-relleno-' + id);
             if (mapa.getLayer('capa-linea-' + id)) mapa.removeLayer('capa-linea-' + id);
             if (mapa.getSource('fuente-zona-' + id)) mapa.removeSource('fuente-zona-' + id);
@@ -286,23 +326,22 @@
             if (marcadores[id]) mapa.flyTo({ center: marcadores[id].getLngLat(), zoom: 16, speed: 1.5 });
         };
 
-        window.eliminarZona = function(id) {
-            if(confirm("¿Seguro que deseas eliminar la zona segura?")) {
-                refDispositivos.child(id).child('geocerca').remove().then(() => {
-                    borrarGeocercaEstatica(id);
-                    mostrarToast("Geocerca eliminada correctamente.", "exito");
+        window.eliminarZonas = function(id) {
+            if(confirm("¿Seguro que deseas eliminar TODAS las zonas seguras de este dispositivo?")) {
+                // Borramos ambas estructuras por seguridad
+                const actualizaciones = { geocercas: null, geocerca: null };
+                refDispositivos.child(id).update(actualizaciones).then(() => {
+                    borrarGeocercasEstaticas(id);
+                    mostrarToast("Geocercas eliminadas correctamente.", "exito");
                 });
             }
         };
 
-        // =========================================================================
-        // 6. LÓGICA DE DIBUJO CON LÍMITE ESTRICTO DE 8 PUNTOS Y REBOTE (UX MEJORADO)
-        // =========================================================================
-
+        // 4. LÓGICA DE DIBUJO CON SOPORTE PARA MÚLTIPLES POLÍGONOS
         window.iniciarEdicionZona = function(id) {
             dispositivoEnEdicion = id;
             draw.deleteAll(); 
-            borrarGeocercaEstatica(id); 
+            borrarGeocercasEstaticas(id); 
             
             document.getElementById('btn-guardar-zona').style.display = 'block';
             document.getElementById('btn-cancelar-edicion').style.display = 'block';
@@ -310,67 +349,80 @@
             document.getElementById('lista-dispositivos').style.pointerEvents = 'none';
             document.getElementById('lista-dispositivos').style.opacity = '0.6';
 
-            refDispositivos.child(id).child('geocerca').once('value').then(snap => {
+            refDispositivos.child(id).once('value').then(snap => {
                 if (snap.exists()) {
-                    const featureIds = draw.add(snap.val());
-                    if(featureIds.length > 0){
-                         poligonoBackup = JSON.parse(JSON.stringify(draw.get(featureIds[0]))); // Backup inicial
-                         draw.changeMode('direct_select', { featureId: featureIds[0] });
+                    const data = snap.val();
+                    let featureCollection = { type: "FeatureCollection", features: [] };
+                    
+                    // Cargamos zonas múltiples si existen
+                    if (data.geocercas && Array.isArray(data.geocercas)) {
+                        featureCollection.features = data.geocercas;
+                    } else if (data.geocerca) { // O cargamos la zona única anterior
+                         featureCollection.features.push(data.geocerca);
                     }
-                } else {
-                    draw.changeMode('draw_polygon');
+
+                    if (featureCollection.features.length > 0) {
+                         const featureIds = draw.add(featureCollection);
+                         // Inicializamos backup para todos
+                         poligonosBackup = {};
+                         featureCollection.features.forEach(f => {
+                              if(f.id) poligonosBackup[f.id] = JSON.parse(JSON.stringify(f));
+                         });
+                    }
                 }
+                draw.changeMode('simple_select'); 
             });
             centrarDispositivo(id);
         };
 
-        // A) AUTO-CIERRE EN TIEMPO REAL: Interceptamos clics mientras se está dibujando un polígono nuevo.
+        // A) AUTO-CIERRE EN TIEMPO REAL
         mapa.on('click', () => {
             if (draw.getMode() === 'draw_polygon') {
                 const data = draw.getAll();
-                if (data.features.length > 0 && data.features[0].geometry.coordinates) {
-                    const coords = data.features[0].geometry.coordinates[0];
-                    // Si el arreglo supera los 9 puntos (8 clics + cursor + cierre)
-                    if (coords.length > 9) {
-                        mostrarToast("8 vértices alcanzados. Se ha cerrado el polígono.");
-                        // Forzamos el cierre y pasamos al modo de edición directa
-                        draw.changeMode('direct_select', { featureId: data.features[0].id });
-                        poligonoBackup = JSON.parse(JSON.stringify(draw.get(data.features[0].id)));
+                // Verificamos el polígono que se está dibujando (generalmente el último)
+                data.features.forEach(feature => {
+                    if (feature.geometry.coordinates) {
+                        const coords = feature.geometry.coordinates[0];
+                        if (coords.length > 9) {
+                            mostrarToast("8 vértices alcanzados. Se ha cerrado el polígono.");
+                            draw.changeMode('direct_select', { featureId: feature.id });
+                            poligonosBackup[feature.id] = JSON.parse(JSON.stringify(draw.get(feature.id)));
+                        }
+                    }
+                });
+            }
+        });
+
+        // B) ACTUALIZAR BACKUP al seleccionar
+        mapa.on('draw.selectionchange', (e) => {
+            if (e.features.length > 0) {
+                const feature = e.features[0];
+                if(feature.geometry.coordinates) {
+                    const coords = feature.geometry.coordinates[0];
+                    if (coords.length <= 9) { 
+                        poligonosBackup[feature.id] = JSON.parse(JSON.stringify(feature));
                     }
                 }
             }
         });
 
-        // B) ACTUALIZAR BACKUP al seleccionar el polígono
-        mapa.on('draw.selectionchange', (e) => {
-            if (e.features.length > 0) {
-                const coords = e.features[0].geometry.coordinates[0];
-                if (coords.length <= 9) { // Solo guarda backups de polígonos válidos
-                    poligonoBackup = JSON.parse(JSON.stringify(e.features[0]));
-                }
-            }
-        });
-
-        // C) EFECTO REBOTE: Prevenir que arrastren una línea del medio para crear un 9no punto.
+        // C) EFECTO REBOTE MULTIPLE
         mapa.on('draw.update', (e) => {
             const feature = e.features[0];
             const coords = feature.geometry.coordinates[0];
             
             if (coords.length > 9) { 
-                mostrarToast("No puedes agregar más de 8 puntos.");
-                
-                if (poligonoBackup) {
-                    // Magia de UX: Si excedió, restauramos instantáneamente el estado anterior (efecto rebote)
-                    draw.add(poligonoBackup);
-                    draw.changeMode('direct_select', { featureId: poligonoBackup.id });
+                mostrarToast("No puedes agregar más de 8 puntos por zona.");
+                if (poligonosBackup[feature.id]) {
+                    draw.add(poligonosBackup[feature.id]);
+                    draw.changeMode('direct_select', { featureId: feature.id });
                 }
             } else {
-                // Si el cambio fue válido (movió un punto sin crear uno nuevo), guardamos el nuevo backup
-                poligonoBackup = JSON.parse(JSON.stringify(feature));
+                poligonosBackup[feature.id] = JSON.parse(JSON.stringify(feature));
             }
         });
 
-        // D) PROTECCIÓN FINAL AL CREAR: Por si hace doble clic muy rápido saltándose el evento anterior
+        // D) PROTECCIÓN FINAL
         mapa.on('draw.create', (e) => {
             const feature = e.features[0];
             const coords = feature.geometry.coordinates[0];
@@ -381,11 +433,9 @@
                  draw.add(feature);
                  mostrarToast("Polígono ajustado automáticamente a 8 vértices máximo.");
             }
-            poligonoBackup = JSON.parse(JSON.stringify(draw.get(feature.id)));
+            poligonosBackup[feature.id] = JSON.parse(JSON.stringify(draw.get(feature.id)));
         });
 
-        // =========================================================================
-        
         function salirModoEdicion() {
             dispositivoEnEdicion = null;
             draw.deleteAll();
@@ -399,6 +449,7 @@
 
         document.getElementById('btn-cancelar-edicion').addEventListener('click', salirModoEdicion);
 
+        // GUARDAR N GEOCERCAS
         document.getElementById('btn-guardar-zona').addEventListener('click', () => {
             const datosDibujados = draw.getAll();
             if (datosDibujados.features.length === 0) {
@@ -407,9 +458,13 @@
             }
 
             if (dispositivoEnEdicion) {
-                refDispositivos.child(dispositivoEnEdicion).child('geocerca').set(datosDibujados.features[0])
+                // Guardamos TODO el arreglo de polígonos bajo el nodo "geocercas"
+                refDispositivos.child(dispositivoEnEdicion).child('geocercas').set(datosDibujados.features)
                 .then(() => {
-                    mostrarToast("Geocerca guardada con éxito.", "exito");
+                    // Borramos la zona única vieja por si existe
+                    refDispositivos.child(dispositivoEnEdicion).child('geocerca').remove();
+                    
+                    mostrarToast(`Se guardaron ${datosDibujados.features.length} zonas con éxito.`, "exito");
                     salirModoEdicion();
                 });
             }
