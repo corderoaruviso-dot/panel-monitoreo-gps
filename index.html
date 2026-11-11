@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Monitoreo - Gestor de Dispositivos (Múltiples Zonas)</title>
+    <title>Panel de Monitoreo - Gestor de Dispositivos (Zonas de Colores)</title>
 
     <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
     <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
@@ -57,11 +57,12 @@
         .btn-editar { background-color: #f39c12; color: white; }
         .btn-editar:hover { background-color: #d68910; }
 
-        /* NUEVOS ESTILOS PARA LA LISTA DE ZONAS */
         .lista-zonas { margin-top: 12px; border-top: 1px solid #32404e; padding-top: 8px; }
-        .item-zona { display: flex; justify-content: space-between; align-items: center; background: #1a222b; padding: 6px 10px; border-radius: 4px; margin-bottom: 6px; font-size: 12px; border-left: 2px solid #5da9f6; }
+        .item-zona { display: flex; justify-content: space-between; align-items: center; background: #1a222b; padding: 6px 10px; border-radius: 4px; margin-bottom: 6px; font-size: 12px; }
         .btn-eliminar-zona { background: transparent; color: #e74c3c; border: none; cursor: pointer; font-size: 14px; transition: transform 0.2s; padding: 0 4px; }
         .btn-eliminar-zona:hover { transform: scale(1.3); }
+        
+        .indicador-color { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; box-shadow: 0 0 4px rgba(0,0,0,0.5); }
 
         #mapa { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
@@ -85,11 +86,7 @@
             pointer-events: none;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
-        .toast-alerta.mostrar {
-            opacity: 1;
-            visibility: visible;
-            transform: translateX(-50%) translateY(0);
-        }
+        .toast-alerta.mostrar { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
         .toast-alerta.exito { background-color: #4ade80; color: #1a222b; }
     </style>
 </head>
@@ -133,6 +130,18 @@
         const alarmaSonora = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg');
         alarmaSonora.loop = true;
         let alarmaSonando = false;
+
+        // NUEVO: Paleta de colores para las diferentes zonas
+        const coloresZonas = [
+            '#5da9f6', // 1. Azul
+            '#4ade80', // 2. Verde
+            '#f59e0b', // 3. Naranja
+            '#a855f7', // 4. Morado
+            '#ec4899', // 5. Rosa
+            '#14b8a6', // 6. Turquesa
+            '#ef4444', // 7. Rojo
+            '#eab308'  // 8. Amarillo
+        ];
 
         function mostrarToast(mensaje, tipo = "error") {
             const toast = document.getElementById('toast-alerta');
@@ -194,7 +203,7 @@
                         let estadoActual = "SIN ZONAS ASIGNADAS";
                         let claseEstado = "estado-sinzona";
                         let estaSeguro = false;
-                        let zonasHTML = ''; // Aquí guardaremos la lista de zonas
+                        let zonasHTML = ''; 
 
                         if (data.geocercas && Array.isArray(data.geocercas) && data.geocercas.length > 0) {
                             const puntoActual = turf.point(coordActual);
@@ -202,14 +211,21 @@
 
                             zonasHTML = '<div class="lista-zonas">';
                             data.geocercas.forEach((zona, index) => {
-                                dibujarGeocercaEstatica(id, zona, index);
+                                // Seleccionamos el color basado en el índice
+                                const colorAsignado = coloresZonas[index % coloresZonas.length];
+                                
+                                dibujarGeocercaEstatica(id, zona, index, colorAsignado);
+                                
                                 if (turf.booleanPointInPolygon(puntoActual, zona)) {
                                     estaSeguro = true;
                                 }
-                                // Generamos un item en la lista para cada zona
+                                // HTML de la lista con el indicador de color visual
                                 zonasHTML += `
-                                    <div class="item-zona">
-                                        <span>🛡️ Zona Segura ${index + 1}</span>
+                                    <div class="item-zona" style="border-left: 3px solid ${colorAsignado};">
+                                        <span style="display:flex; align-items:center;">
+                                            <div class="indicador-color" style="background-color: ${colorAsignado};"></div>
+                                            Zona Segura ${index + 1}
+                                        </span>
                                         <button class="btn-eliminar-zona" onclick="eliminarZonaEspecifica('${id}', ${index})" title="Eliminar solo esta zona">✖</button>
                                     </div>
                                 `;
@@ -226,7 +242,6 @@
                             }
                         } else {
                             borrarGeocercasEstaticas(id);
-                            // Limpieza de compatibilidad por si queda la variable antigua
                             if (data.geocerca) refDispositivos.child(id).child('geocerca').remove();
                         }
 
@@ -242,7 +257,6 @@
                                     <button class="btn-accion btn-centrar" onclick="centrarDispositivo('${id}')">📍 Centrar</button>
                                     <button class="btn-accion btn-editar" onclick="iniciarEdicionZona('${id}')">✏️ Editar Zonas</button>
                                 </div>
-                                <!-- La lista individual de zonas se inserta aquí -->
                                 ${zonasHTML}
                             </div>
                         `;
@@ -273,16 +287,20 @@
         });
 
         // 3. FUNCIONES DE UI Y MAPA ESTÁTICO
-        function dibujarGeocercaEstatica(id, geojsonPoly, indice) {
+        // Modificado para aceptar y aplicar el colorAsignado
+        function dibujarGeocercaEstatica(id, geojsonPoly, indice, color) {
             const sourceId = `fuente-zona-${id}-${indice}`;
             if (dispositivoEnEdicion === id) return;
 
             if (mapa.getSource(sourceId)) {
                 mapa.getSource(sourceId).setData(geojsonPoly);
+                // Actualizamos los colores por si el índice cambió al borrar una zona anterior
+                mapa.setPaintProperty(`capa-relleno-${id}-${indice}`, 'fill-color', color);
+                mapa.setPaintProperty(`capa-linea-${id}-${indice}`, 'line-color', color);
             } else {
                 mapa.addSource(sourceId, { 'type': 'geojson', 'data': geojsonPoly });
-                mapa.addLayer({ 'id': `capa-relleno-${id}-${indice}`, 'type': 'fill', 'source': sourceId, 'paint': { 'fill-color': '#5da9f6', 'fill-opacity': 0.3 } });
-                mapa.addLayer({ 'id': `capa-linea-${id}-${indice}`, 'type': 'line', 'source': sourceId, 'paint': { 'line-color': '#5da9f6', 'line-width': 2 } });
+                mapa.addLayer({ 'id': `capa-relleno-${id}-${indice}`, 'type': 'fill', 'source': sourceId, 'paint': { 'fill-color': color, 'fill-opacity': 0.35 } });
+                mapa.addLayer({ 'id': `capa-linea-${id}-${indice}`, 'type': 'line', 'source': sourceId, 'paint': { 'line-color': color, 'line-width': 2 } });
             }
         }
 
@@ -309,15 +327,13 @@
             if (marcadores[id]) mapa.flyTo({ center: marcadores[id].getLngLat(), zoom: 16, speed: 1.5 });
         };
 
-        // NUEVA FUNCIÓN: ELIMINAR ZONA ESPECÍFICA
         window.eliminarZonaEspecifica = function(id, index) {
             if(confirm(`¿Estás seguro de eliminar la Zona ${index + 1}?`)) {
                 refDispositivos.child(id).child('geocercas').once('value').then(snap => {
                     let zonas = snap.val();
                     if (zonas && Array.isArray(zonas)) {
-                        zonas.splice(index, 1); // Extraemos la zona seleccionada
-                        
-                        borrarGeocercasEstaticas(id); // Limpiamos el mapa
+                        zonas.splice(index, 1); 
+                        borrarGeocercasEstaticas(id); 
 
                         if (zonas.length > 0) {
                             refDispositivos.child(id).child('geocercas').set(zonas).then(() => {
@@ -439,7 +455,6 @@
         document.getElementById('btn-guardar-zona').addEventListener('click', () => {
             const datosDibujados = draw.getAll();
             if (datosDibujados.features.length === 0) {
-                // Si guardan habiendo borrado todo con el basurero del mapa
                 refDispositivos.child(dispositivoEnEdicion).child('geocercas').remove().then(() => {
                     mostrarToast("Se eliminaron todas las zonas del dispositivo.");
                     salirModoEdicion();
@@ -450,7 +465,7 @@
             if (dispositivoEnEdicion) {
                 refDispositivos.child(dispositivoEnEdicion).child('geocercas').set(datosDibujados.features)
                 .then(() => {
-                    refDispositivos.child(dispositivoEnEdicion).child('geocerca').remove(); // Limpieza antigua
+                    refDispositivos.child(dispositivoEnEdicion).child('geocerca').remove(); 
                     mostrarToast(`Se guardaron ${datosDibujados.features.length} zonas con éxito.`, "exito");
                     salirModoEdicion();
                 });
